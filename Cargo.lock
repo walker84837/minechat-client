@@ -609,7 +609,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "minechat-rs"
+name = "minechat-client"
 version = "0.1.0"
 dependencies = [
  "clap",
