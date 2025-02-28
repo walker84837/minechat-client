@@ -1,17 +1,17 @@
 use clap::Parser;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target};
-use log::{debug, error, info, log_enabled, Level};
-use miette::{IntoDiagnostic, Result};
+use log::{debug, error, info};
+use miette::{Diagnostic, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
-    io::{self, BufRead, Write},
+    io,
     path::PathBuf,
 };
 use thiserror::Error;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
     net::TcpStream,
     signal,
 };
@@ -21,7 +21,7 @@ use uuid::Uuid;
 #[clap(
     name = "MineChat",
     version = "0.1.0",
-    author = "Your Name",
+    author = "walker84837",
     about = "CLI client for MineChat"
 )]
 struct Args {
@@ -57,9 +57,8 @@ enum MineChatError {
 
     #[error("UUID error: {0}")]
     Uuid(#[from] uuid::Error),
-
-    #[error("Disconnected")]
-    Disconnected,
+    // #[error("Disconnected")]
+    // Disconnected,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -143,14 +142,19 @@ fn save_config(config: &ServerConfig) -> Result<(), MineChatError> {
     Ok(serde_json::to_writer_pretty(file, config)?)
 }
 
-async fn send_message(stream: &mut TcpStream, msg: &MineChatMessage) -> Result<(), MineChatError> {
+async fn send_message<W>(writer: &mut W, msg: &MineChatMessage) -> Result<(), MineChatError>
+where
+    W: AsyncWrite + Unpin,
+{
     let json = serde_json::to_string(msg)? + "\n";
-    stream.write_all(json.as_bytes()).await?;
+    writer.write_all(json.as_bytes()).await?;
     Ok(())
 }
 
-async fn receive_message(stream: &mut TcpStream) -> Result<MineChatMessage, MineChatError> {
-    let mut reader = BufReader::new(stream);
+async fn receive_message<R>(reader: &mut R) -> Result<MineChatMessage, MineChatError>
+where
+    R: AsyncBufRead + Unpin,
+{
     let mut line = String::new();
     reader.read_line(&mut line).await?;
     Ok(serde_json::from_str(&line)?)
@@ -161,8 +165,11 @@ async fn handle_link(server_addr: &str, code: &str) -> Result<(), MineChatError>
     info!("Linking with code: {}", code);
 
     let mut stream = TcpStream::connect(server_addr).await?;
+    let (reader, mut writer) = stream.split();
+    let mut reader = BufReader::new(reader);
+
     send_message(
-        &mut stream,
+        &mut writer,
         &MineChatMessage::Auth {
             payload: AuthPayload {
                 client_uuid: client_uuid.clone(),
@@ -172,12 +179,11 @@ async fn handle_link(server_addr: &str, code: &str) -> Result<(), MineChatError>
     )
     .await?;
 
-    match receive_message(&mut stream).await? {
+    match receive_message(&mut reader).await? {
         MineChatMessage::AuthAck { payload } => {
             if payload.status == "success" {
                 info!("Linked successfully: {}", payload.message);
                 let mut config = load_config()?;
-                // Remove existing entry if present
                 config.servers.retain(|e| e.address != server_addr);
                 config.servers.push(ServerEntry {
                     address: server_addr.to_string(),
@@ -202,8 +208,11 @@ async fn handle_connect(server_addr: &str) -> Result<(), MineChatError> {
         .ok_or(MineChatError::ServerNotLinked)?;
 
     let mut stream = TcpStream::connect(server_addr).await?;
+    let (reader, mut writer) = stream.split();
+    let mut reader = BufReader::new(reader);
+
     send_message(
-        &mut stream,
+        &mut writer,
         &MineChatMessage::Auth {
             payload: AuthPayload {
                 client_uuid: entry.uuid.clone(),
@@ -213,11 +222,13 @@ async fn handle_connect(server_addr: &str) -> Result<(), MineChatError> {
     )
     .await?;
 
-    match receive_message(&mut stream).await? {
+    match receive_message(&mut reader).await? {
         MineChatMessage::AuthAck { payload } => {
             if payload.status == "success" {
                 info!("Connected: {}", payload.message);
-                repl(&mut stream).await
+                // Pass the split reader and writer to repl
+                let (reader, writer) = stream.into_split();
+                repl(BufReader::new(reader), writer).await
             } else {
                 Err(MineChatError::AuthFailed(payload.message))
             }
@@ -226,20 +237,22 @@ async fn handle_connect(server_addr: &str) -> Result<(), MineChatError> {
     }
 }
 
-async fn repl(stream: &mut TcpStream) -> Result<(), MineChatError> {
-    let (mut reader, mut writer) = stream.split();
+async fn repl<R, W>(mut reader: R, mut writer: W) -> Result<(), MineChatError>
+where
+    R: AsyncBufRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let mut stdin = BufReader::new(tokio::io::stdin());
     let mut buffer = String::new();
+    let mut msg_buffer = String::new();
 
     loop {
         tokio::select! {
-            result = reader.readable() => {
-                result?;
-                let mut buf = [0; 1024];
-                match reader.try_read(&mut buf) {
-                    Ok(n) => {
-                        let msg_str = String::from_utf8_lossy(&buf[..n]);
-                        if let Ok(msg) = serde_json::from_str::<MineChatMessage>(&msg_str) {
+            result = reader.read_line(&mut msg_buffer) => {
+                match result {
+                    Ok(0) => return Ok(()),
+                    Ok(_) => {
+                        if let Ok(msg) = serde_json::from_str::<MineChatMessage>(&msg_buffer) {
                             match msg {
                                 MineChatMessage::Broadcast { payload } => {
                                     println!("[{}] {}", payload.from, payload.message);
@@ -251,33 +264,33 @@ async fn repl(stream: &mut TcpStream) -> Result<(), MineChatError> {
                                 _ => debug!("Received message: {:?}", msg),
                             }
                         }
+                        msg_buffer.clear();
                     }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
                     Err(e) => return Err(e.into()),
                 }
             }
             result = stdin.read_line(&mut buffer) => {
                 let n = result?;
                 if n == 0 {
-                    send_message(&mut writer.into_inner(), &MineChatMessage::Disconnect {
+                    send_message(&mut writer, &MineChatMessage::Disconnect {
                         payload: DisconnectPayload { reason: "Client exit".into() }
                     }).await?;
                     return Ok(());
                 }
                 let input = buffer.trim().to_string();
                 if input == "/exit" {
-                    send_message(&mut writer.into_inner(), &MineChatMessage::Disconnect {
+                    send_message(&mut writer, &MineChatMessage::Disconnect {
                         payload: DisconnectPayload { reason: "Client exit".into() }
                     }).await?;
                     return Ok(());
                 }
-                send_message(&mut writer.into_inner(), &MineChatMessage::Chat {
+                send_message(&mut writer, &MineChatMessage::Chat {
                     payload: ChatPayload { message: input }
                 }).await?;
                 buffer.clear();
             }
             _ = signal::ctrl_c() => {
-                send_message(&mut writer.into_inner(), &MineChatMessage::Disconnect {
+                send_message(&mut writer, &MineChatMessage::Disconnect {
                     payload: DisconnectPayload { reason: "Client exit".into() }
                 }).await?;
                 return Ok(());
@@ -311,5 +324,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-
