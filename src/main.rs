@@ -1,3 +1,4 @@
+use crate::protocol::*;
 use clap::Parser;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target};
@@ -16,6 +17,8 @@ use tokio::{
     signal,
 };
 use uuid::Uuid;
+
+mod protocol;
 
 #[derive(Parser)]
 #[clap(
@@ -70,51 +73,6 @@ struct ServerConfig {
 struct ServerEntry {
     address: String,
     uuid: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum MineChatMessage {
-    #[serde(rename = "AUTH")]
-    Auth { payload: AuthPayload },
-    #[serde(rename = "AUTH_ACK")]
-    AuthAck { payload: AuthAckPayload },
-    #[serde(rename = "CHAT")]
-    Chat { payload: ChatPayload },
-    #[serde(rename = "BROADCAST")]
-    Broadcast { payload: BroadcastPayload },
-    #[serde(rename = "DISCONNECT")]
-    Disconnect { payload: DisconnectPayload },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AuthPayload {
-    client_uuid: String,
-    link_code: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AuthAckPayload {
-    status: String,
-    message: String,
-    minecraft_uuid: Option<String>,
-    username: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ChatPayload {
-    message: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct BroadcastPayload {
-    from: String,
-    message: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct DisconnectPayload {
-    reason: String,
 }
 
 fn config_path() -> Result<PathBuf, MineChatError> {
