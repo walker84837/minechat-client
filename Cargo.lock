@@ -617,12 +617,27 @@ dependencies = [
  "env_logger",
  "log",
  "miette",
+ "minechat-protocol",
  "serde",
  "serde_json",
  "thiserror 2.0.11",
  "tokio",
  "tokio-tungstenite",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "minechat-protocol"
+version = "0.1.0"
+source = "git+https://github.com/walker84837/minechat-protocol.git#8261a0e6b0f90ed07acacd50421f52dd661ab1d5"
+dependencies = [
+ "log",
+ "miette",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.11",
+ "tokio",
  "uuid",
 ]
 
