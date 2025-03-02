@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
     } else {
         handle_connect(&args.server).await
     }
-    .map_err(|e| miette::Report::new(e))?;
+    .map_err(miette::Report::new)?;
 
     Ok(())
 }
