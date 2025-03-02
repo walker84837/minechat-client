@@ -1,24 +1,20 @@
-use crate::protocol::*;
 use clap::Parser;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target};
-use log::{debug, error, info};
-use miette::{Diagnostic, Result};
+use log::{debug, info};
+use miette::Result;
+use minechat_protocol::{packets::MineChatError, packets::*, protocol::*};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
-    io,
     path::PathBuf,
 };
-use thiserror::Error;
 use tokio::{
-    io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, BufReader},
     net::TcpStream,
     signal,
 };
 use uuid::Uuid;
-
-mod protocol;
 
 #[derive(Parser)]
 #[clap(
@@ -39,29 +35,6 @@ struct Args {
     /// Enable verbose logging
     #[clap(short, long)]
     verbose: bool,
-}
-
-#[derive(Debug, Error, Diagnostic)]
-enum MineChatError {
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
-
-    #[error("Serde error: {0}")]
-    Serde(#[from] serde_json::Error),
-
-    #[error("Server not linked")]
-    ServerNotLinked,
-
-    #[error("Config error: {0}")]
-    ConfigError(String),
-
-    #[error("Authentication failed: {0}")]
-    AuthFailed(String),
-
-    #[error("UUID error: {0}")]
-    Uuid(#[from] uuid::Error),
-    // #[error("Disconnected")]
-    // Disconnected,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -98,24 +71,6 @@ fn save_config(config: &ServerConfig) -> Result<(), MineChatError> {
     let path = config_path()?;
     let file = File::create(path)?;
     Ok(serde_json::to_writer_pretty(file, config)?)
-}
-
-async fn send_message<W>(writer: &mut W, msg: &MineChatMessage) -> Result<(), MineChatError>
-where
-    W: AsyncWrite + Unpin,
-{
-    let json = serde_json::to_string(msg)? + "\n";
-    writer.write_all(json.as_bytes()).await?;
-    Ok(())
-}
-
-async fn receive_message<R>(reader: &mut R) -> Result<MineChatMessage, MineChatError>
-where
-    R: AsyncBufRead + Unpin,
-{
-    let mut line = String::new();
-    reader.read_line(&mut line).await?;
-    Ok(serde_json::from_str(&line)?)
 }
 
 async fn handle_link(server_addr: &str, code: &str) -> Result<(), MineChatError> {
