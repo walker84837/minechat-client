@@ -25,7 +25,4 @@ serde = { version = "1.0.218", features = ["derive"] }
 serde_json = "1.0.139"
 thiserror = "2.0.11"
 tokio = { version = "1.41.1", features = ["full"] }
-tokio-tungstenite = { version = "0.24.0", features = ["tokio-rustls"] }
-url = "2.5.4"
-uuid = { version = "1.15.1", features = ["v4"] }
-minechat-protocol = { git = "https://github.com/walker84837/minechat-protocol.git" }
+minechat-protocol = { git = "https://github.com/walker84837/minechat-protocol.git", rev = "1c2e8b29aa35c922baa1377288d462745d73dbc9" }

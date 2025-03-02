@@ -3,7 +3,10 @@ use directories::ProjectDirs;
 use env_logger::{Builder, Target};
 use log::{debug, info};
 use miette::Result;
-use minechat_protocol::{packets::MineChatError, packets::*, protocol::*};
+use minechat_protocol::{
+    packets::{self, MineChatError, receive_message, send_message},
+    protocol::*,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
@@ -14,7 +17,6 @@ use tokio::{
     net::TcpStream,
     signal,
 };
-use uuid::Uuid;
 
 #[derive(Parser)]
 #[clap(
@@ -73,43 +75,18 @@ fn save_config(config: &ServerConfig) -> Result<(), MineChatError> {
     Ok(serde_json::to_writer_pretty(file, config)?)
 }
 
-async fn handle_link(server_addr: &str, code: &str) -> Result<(), MineChatError> {
-    let client_uuid = Uuid::new_v4().to_string();
-    info!("Linking with code: {}", code);
+async fn set_link(server_addr: &str, code: &str) -> Result<(), MineChatError> {
+    let (client_uuid, _link_code) = packets::handle_link(server_addr, code).await?;
 
-    let mut stream = TcpStream::connect(server_addr).await?;
-    let (reader, mut writer) = stream.split();
-    let mut reader = BufReader::new(reader);
-
-    send_message(
-        &mut writer,
-        &MineChatMessage::Auth {
-            payload: AuthPayload {
-                client_uuid: client_uuid.clone(),
-                link_code: code.to_string(),
-            },
-        },
-    )
-    .await?;
-
-    match receive_message(&mut reader).await? {
-        MineChatMessage::AuthAck { payload } => {
-            if payload.status == "success" {
-                info!("Linked successfully: {}", payload.message);
-                let mut config = load_config()?;
-                config.servers.retain(|e| e.address != server_addr);
-                config.servers.push(ServerEntry {
-                    address: server_addr.to_string(),
-                    uuid: client_uuid,
-                });
-                save_config(&config)?;
-                Ok(())
-            } else {
-                Err(MineChatError::AuthFailed(payload.message))
-            }
-        }
-        _ => Err(MineChatError::AuthFailed("Unexpected response".into())),
-    }
+    info!("Linked successfully");
+    let mut config = load_config()?;
+    config.servers.retain(|e| e.address != server_addr);
+    config.servers.push(ServerEntry {
+        address: server_addr.to_string(),
+        uuid: client_uuid,
+    });
+    save_config(&config)?;
+    Ok(())
 }
 
 async fn handle_connect(server_addr: &str) -> Result<(), MineChatError> {
@@ -229,7 +206,7 @@ async fn main() -> Result<()> {
     init_logger(args.verbose);
 
     if let Some(code) = args.link {
-        handle_link(&args.server, &code).await
+        set_link(&args.server, &code).await
     } else {
         handle_connect(&args.server).await
     }
