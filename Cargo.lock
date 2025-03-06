@@ -338,7 +338,8 @@ dependencies = [
 [[package]]
 name = "minechat-protocol"
 version = "0.1.0"
-source = "git+https://github.com/walker84837/minechat-protocol.git?rev=1c2e8b29aa35c922baa1377288d462745d73dbc9#1c2e8b29aa35c922baa1377288d462745d73dbc9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73b067461d6c0b4ce4a33811a083b17f76ebf3dc456b20d27ca8f947ebf0b7d4"
 dependencies = [
  "log",
  "miette",
