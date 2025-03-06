@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2024"
 license = "MPL-2.0"
 repository = "https://github.com/walker84837/minechat-client"
+description = "The client implementation of MineChat, letting you chat with people over on Minecraft"
 authors = ["walker84837"]
+readme = "README.md"
+rust-version = "1.85.0"
+keywords = ["chat-client", "cli", "networking", "async", "tcp"]
+categories = ["command-line-utilities", "network-programming", "authentication", "config"]
 
 [profile.dev]
 debug = false
