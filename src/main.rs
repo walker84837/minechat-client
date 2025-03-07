@@ -4,8 +4,8 @@ use env_logger::{Builder, Target};
 use log::{debug, info};
 use miette::Result;
 use minechat_protocol::{
-    packets::{self, MineChatError, receive_message, send_message},
-    protocol::*,
+    packets::{self, receive_message, send_message},
+    protocol::{MineChatError, *},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -20,8 +20,8 @@ use tokio::{
 
 #[derive(Parser)]
 #[clap(
-    name = "MineChat",
-    version = "0.1.0",
+    name = "MineCLI",
+    version = "0.1.1",
     author = "walker84837",
     about = "CLI client for MineChat"
 )]
@@ -76,7 +76,7 @@ fn save_config(config: &ServerConfig) -> Result<(), MineChatError> {
 }
 
 async fn set_link(server_addr: &str, code: &str) -> Result<(), MineChatError> {
-    let (client_uuid, _link_code) = packets::handle_link(server_addr, code).await?;
+    let (client_uuid, _link_code) = packets::link_with_server(server_addr, code).await?;
 
     info!("Linked successfully");
     let mut config = load_config()?;

@@ -1,4 +1,4 @@
-# MineChat Client
+# MineCLI - MineChat Client
 
 [![CI status](https://github.com/walker84837/minechat-client/actions/workflows/rust.yml/badge.svg)](https://github.com/walker84837/minechat-client/actions/workflows/rust.yml)
 
