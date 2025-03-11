@@ -1,3 +1,4 @@
+use ansi_term::Colour;
 use clap::Parser;
 use directories::ProjectDirs;
 use env_logger::{Builder, Target};
@@ -12,7 +13,6 @@ use std::{
     fs::{self, File},
     path::PathBuf,
 };
-use ansi_term::Colour;
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, BufReader},
     net::TcpStream,
@@ -128,6 +128,40 @@ async fn handle_connect(server_addr: &str) -> Result<(), MineChatError> {
     }
 }
 
+fn handle_incoming_message(
+    result: std::io::Result<usize>,
+    msg_buffer: &mut String,
+) -> Result<(), MineChatError> {
+    match result {
+        Ok(0) => Ok(()),
+        Ok(_) => {
+            if let Ok(msg) = serde_json::from_str::<MineChatMessage>(msg_buffer) {
+                match msg {
+                    MineChatMessage::Broadcast { payload } => {
+                        let formatted_message = format!(
+                            "[{}] {}",
+                            Colour::Blue.paint(payload.from),
+                            Colour::Green.paint(payload.message)
+                        );
+                        println!("{}", formatted_message);
+                    }
+                    MineChatMessage::Disconnect { payload } => {
+                        println!(
+                            "{}",
+                            Colour::Red.paint(format!("Disconnected: {}", payload.reason))
+                        );
+                        return Ok(());
+                    }
+                    _ => debug!("Received message: {:?}", msg),
+                }
+            }
+            msg_buffer.clear();
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
 async fn repl<R, W>(mut reader: R, mut writer: W) -> Result<(), MineChatError>
 where
     R: AsyncBufRead + Unpin,
@@ -140,31 +174,7 @@ where
     loop {
         tokio::select! {
             result = reader.read_line(&mut msg_buffer) => {
-                match result {
-                    Ok(0) => return Ok(()),
-                    Ok(_) => {
-                        if let Ok(msg) = serde_json::from_str::<MineChatMessage>(&msg_buffer) {
-                            match msg {
-                                MineChatMessage::Broadcast { payload } => {
-                                    // Use ANSI colors for formatting
-                                    let formatted_message = format!(
-                                        "[{}] {}",
-                                        Colour::Blue.paint(payload.from),
-                                        Colour::Green.paint(payload.message)
-                                    );
-                                    println!("{}", formatted_message);
-                                }
-                                MineChatMessage::Disconnect { payload } => {
-                                    println!("{}", Colour::Red.paint(format!("Disconnected: {}", payload.reason)));
-                                    return Ok(());
-                                }
-                                _ => debug!("Received message: {:?}", msg),
-                            }
-                        }
-                        msg_buffer.clear();
-                    }
-                    Err(e) => return Err(e.into()),
-                }
+                handle_incoming_message(result, &mut msg_buffer)?;
             }
             result = stdin.read_line(&mut buffer) => {
                 let n = result?;
