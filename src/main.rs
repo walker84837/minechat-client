@@ -145,10 +145,16 @@ where
                         if let Ok(msg) = serde_json::from_str::<MineChatMessage>(&msg_buffer) {
                             match msg {
                                 MineChatMessage::Broadcast { payload } => {
-                                    println!("[{}] {}", payload.from, payload.message);
+                                    // Use ANSI colors for formatting
+                                    let formatted_message = format!(
+                                        "[{}] {}",
+                                        Colour::Blue.paint(payload.from),
+                                        Colour::Green.paint(payload.message)
+                                    );
+                                    println!("{}", formatted_message);
                                 }
                                 MineChatMessage::Disconnect { payload } => {
-                                    println!("Disconnected: {}", payload.reason);
+                                    println!("{}", Colour::Red.paint(format!("Disconnected: {}", payload.reason)));
                                     return Ok(());
                                 }
                                 _ => debug!("Received message: {:?}", msg),
